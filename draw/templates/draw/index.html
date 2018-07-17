@@ -9,17 +9,81 @@
     <link rel="stylesheet" type="text/css" href="{% static 'draw/vendor/bootstrap/css/bootstrap.min.css' %}">
     <script type="text/javascript" src="{% static 'draw/vendor/jquery/jquery-3.3.1.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'draw/vendor/paper/paper-full.min.js' %}"></script>
-
+    <script type="text/javascript" src="{% static 'draw/vendor/hammer/hammer.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'draw/vendor/hammer/jquery.hammer.js' %}"></script>
+    <script type="text/javascript" src="{% static 'draw/vendor/jquery-ui/jquery-ui.min.js' %}"></script>
     <style type="text/css">
+        #container {
+            text-align: center;
+        }
+        
+        #myCanvas {
+            margin-top: 100px; 
+            height: 750px; 
+            width: 750px;
+            border: 1px solid blue;
+        }  
     </style>
 
 </head>
 <body>
-    <!-- You may change the dimensions of this canvas -->
-    <canvas id="myCanvas" width="750px" height="750px"></canvas>
+    <div id="container">
+        <!-- You may change the dimensions of this canvas -->
+        <canvas id="myCanvas"></canvas>
+      <!--exercise 2 change color; comment out for custom interaction -->
+        <!--<div id = "box" style = "background-color:blue; width:100px; height:100px; position:absolute; top:10px;"> -->
+      
+      
+    </div>
+    <div id="pinchzoom">
+        <img id="img" src="http://pr.bdimg.com/static/princess/img/misc/baidu_logo_c352a179.gif" ondragstart="return false" alt="" />
+    </div>
 </body>
 <script>
+    var hammertime = Hammer(document.getElementById('pinchzoom'),{
+        transform_always_block:true,
+        transform_min_scale:0.5,
+        drag_block_horizontal:true,
+        drag_block_vertical:true,
+        drag_min_distance:0
+    });
 
+    var img = document.getElementById('img');
+    //初始值
+    var posX = 0,
+        posY = 0,
+        last_posX,
+        last_posY,
+        scale = 1,
+        last_scale,
+        rotation = 0,
+        last_rotation;
+
+    hammertime.on('touch drag transform',function(e){
+        switch(e.type){
+            //当touch开始时，记录下当前的缩放量，旋转量和位移量
+            case 'touch':
+                last_scale = scale;
+                last_rotation = rotation;
+                last_posX = posX;
+                last_posY = posY;
+                break;
+            //拖拽时改变位移量
+            case 'drag':
+                posX = last_posX + e.gesture.deltaX;
+                posY = last_posY + e.gesture.deltaY;
+                break;
+            case 'transform':
+                rotation = last_rotation + e.gesture.rotation;
+                scale = Math.min(last_scale* e.gesture.scale,10);
+                break;
+        }
+        //使用CSS3 transform进行图片的变换
+        var transform = "translate3d("+posX+"px,"+posY+"px,0)"+"scale3d("+scale+","+scale+",1)"+"rotate("+rotation+"deg)";
+        img.style.webkitTransform = transform;
+    })
+    
+    // Start
     // setting up the canvas and one paper tool
     var canvas = document.getElementById('myCanvas');
     paper.setup(canvas);
@@ -27,9 +91,181 @@
 
     // getting the URL (you may want to use for Exercise 3)
     var url = window.location.href;
+    var socket = new WebSocket('ws://p4-mjiachan-mjiachan854394.codeanyapp.com:8765/');
+    
+    // comment out for custom interaction
+    // Set BroadCast
+    /**var textItem = new paper.PointText(new paper.Point(20, 30));
+    textItem.fillColor = 'black';
+    textItem.content = 'Here is BroadCast Board';
+    
+    // Define Client Info Object
+    class Client {
+        constructor(myID, myColor, myPath) {
+            this.id = myID;
+            this.color = myColor;
+            this.path = myPath;
+        }
+        
+        getID() {
+            return this.id;
+        }
+        
+        getColor() {
+            return this.color;
+        }
+        
+        getPath() {
+            return this.path;
+        }
+        
+        addPoint(x, y) {
+            this.path.add(new paper.Point(x, y));
+        }
+    }
+    
+    // Define Clients Tracking
+    class Users {
+        constructor() {
+            this.users = {};
+        }
+        
+        getUser(clientID) {
+            return this.users[clientID];
+        }
+        
+        addPointToClient(clientID, x, y) {
+            this.users[clientID].addPoint(x, y);
+        }
+        
+        hasUser(clientID) {
+            if (this.users[clientID] != undefined) {
+                return true;
+            }
+            return false;
+        }
+        
+        addUser(client) {
+            var clientID = client.getID();
+            this.users[clientID] = client;
+        }
+        
+        cleanAll() {
+            this.users = {};
+        }
+    }
+    
+    // Central System that keeps track of every Client
+    var users = new Users();
+    
+    var myID = Math.floor(Math.random() * 1000000000);
+    var myColor = new paper.Color(Math.random(), Math.random(), Math.random());
+    var myPath = new paper.Path();
+    myPath.strokeColor = myColor;
 
-    // var socket = new WebSocket(
-    //     'ws://your url here:8765/');
+
+    // Add a point to path every time
+    tool.onMouseMove = function(event) {
+        myPath.add(event.point);
+        socket.send(JSON.stringify({userID: myID, userColor: myColor, x: event.point.x, y: event.point.y}));
+    }
+    
+    // Decompose URL 
+    function getParameterFromUrl(name, url) {
+        if (!url) url = window.location.href;
+        name = name.replace(/[\[\]]/g, '\\$&');
+        var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+            results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, ' '));
+    }
+    var screenSize = getParameterFromUrl('size');
+    
+    // Show every path only if '?size=large'
+    if (screenSize == 'large') {
+        socket.onmessage = function(event) {
+            var msg = JSON.parse(event.data);
+            var userID = msg.userID;
+            var userColor = new paper.Color(msg.userColor[1], msg.userColor[2], msg.userColor[3]);
+
+            if (!users.hasUser(userID)) {
+                var pathDraw = new paper.Path();
+                pathDraw.strokeColor = userColor;
+                pathDraw.add(new paper.Point(msg.x, msg.y)); 
+                users.addUser(new Client(userID, userColor, pathDraw));
+            }
+            else if (userID != myID) { // Avoid mySelf's path (duplicate)
+                users.addPointToClient(userID, msg.x, msg.y);
+            }
+        }
+    }
+    
+    
+    //exercise 2
+    var sensitivity = 15;
+    var x1 = 0, y1 = 0, z1 = 0, x2 = 0, y2 = 0, z2 = 0;
+
+    // Listen to motion events and update the position
+    window.addEventListener('devicemotion', function (event) {
+        x1 = event.accelerationIncludingGravity.x;
+        y1 = event.accelerationIncludingGravity.y;
+        z1 = event.accelerationIncludingGravity.z;
+    }, false);
+
+    //check if shake is supported or not.
+    if(!("ondevicemotion" in window)){alert("Not Supported");}
+    var largestChange = 0;
+    setInterval(function () {
+        var change = Math.abs(x1-x2) + Math.abs(y1-y2) + Math.abs(z1-z2);
+        if (change > largestChange) {
+            largestChange = change;
+        }
+        
+        if (change > sensitivity) {
+            textItem.content = "Shake Detected: " + largestChange;
+            var context = canvas.getContext('2d');
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            //context.fillStyle = "blue";
+          paper.project.activeLayer.removeChildren();
+          paper.view.draw();
+          //project.activeLayer.removeChildren();
+          //context.fillStyle = "rgb(0, 200, 0)";
+          
+         
+        
+  
+  
+
+            // Clean all existed paths
+            users.cleanAll();
+            myPath = new paper.Path();
+            myPath.strokeColor = myColor;
+        }
+
+        // Update new position
+        x2 = x1;
+        y2 = y1;
+        z2 = z1;
+    }, 15);
+  
+  
+  
+    var x = 0;
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', function(event) {
+          setInterval(function() {
+            x = event.gamma;
+            if (x > 50) {
+              document.getElementById("box").style.backgroundColor = "black";
+            }
+        }, 50);  
+
+        }, false);
+    } else {
+        console.log('This device does not support deviceorientation');
+    } */
+  
 
 
 </script>
